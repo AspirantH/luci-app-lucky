@@ -33,8 +33,8 @@ ifeq ($(ARCH),arm)
 	ifeq ($(BOARD),bcm53xx)
 		LUCKY_ARCH:=armv6
 	else
-	LUCKY_ARCH:=armv7
-endif
+		LUCKY_ARCH:=armv7
+	endif
 endif
 ifeq ($(BOARD),bcm53xx)
 	LUCKY_ARCH:=armv6
@@ -76,7 +76,7 @@ endef
 
 define Build/Prepare
 	[ ! -f $(PKG_BUILD_DIR)/$(FILE_NAME) ] && wget $(RELEASE_URL)/$(RELEASE_DIR)/$(FILE_NAME) -O $(PKG_BUILD_DIR)/$(FILE_NAME)
-	tar -xzvf $(PKG_BUILD_DIR)/$(FILE_NAME) -C $(PKG_BUILD_DIR) || exit 1
+	tar -xzvf $(PKG_BUILD_DIR)/$(FILE_NAME) -C $(PKG_BUILD_DIR)
 endef
 
 define Package/$(PKG_NAME)/conffiles
