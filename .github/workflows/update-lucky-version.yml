@@ -1,0 +1,112 @@
+name: Update Lucky Version
+on:
+  schedule:
+    - cron: "0 0 * * *"
+    - cron: "0 8 * * *"
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+    inputs:
+      include_prerelease:
+        description: Include beta release directories
+        required: false
+        default: "true"
+permissions:
+  contents: write
+concurrency:
+  group: update-lucky-version
+  cancel-in-progress: true
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    env:
+      RELEASE_BASE: https://release.66666.host
+      LUCKY_VARIANT: lucky
+      INCLUDE_PRERELEASE: ${{ github.event.inputs.include_prerelease || 'true' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Resolve latest upstream lucky release
+        id: latest
+        shell: bash
+        run: |
+          set -euo pipefail
+          root_json="$(mktemp)"
+          curl -fsSL -H "Accept: application/json" "${RELEASE_BASE}/" -o "${root_json}"
+          python3 - "${root_json}" "${RELEASE_BASE}" "${LUCKY_VARIANT}" "${INCLUDE_PRERELEASE}" >> "${GITHUB_OUTPUT}" <<'PY'
+          import json
+          import re
+          import sys
+          import urllib.request
+          root_json, release_base, variant, include_prerelease = sys.argv[1:]
+          with open(root_json, encoding="utf-8") as fh:
+              root_items = json.load(fh)
+          stable_pattern = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+          beta_pattern = re.compile(r"^v(\d+)\.(\d+)\.(\d+)beta(\d+)$")
+          candidates = []
+          for item in root_items:
+              name = item.get("name", "")
+              if not item.get("is_dir"):
+                  continue
+              stable = stable_pattern.fullmatch(name)
+              beta = beta_pattern.fullmatch(name)
+              if stable:
+                  major, minor, patch = map(int, stable.groups())
+                  candidates.append(((major, minor, patch, 0), item))
+              elif include_prerelease == "true" and beta:
+                  major, minor, patch, beta_no = map(int, beta.groups())
+                  candidates.append(((major, minor, patch, beta_no), item))
+          if not candidates:
+              raise SystemExit("No matching Lucky release directories found")
+          _, release_item = max(candidates, key=lambda x: x[0])
+          release_dir = release_item["name"]
+          raw_dir_name = release_dir.lstrip("v")
+          if "beta" in raw_dir_name:
+              m = beta_pattern.match(release_dir)
+              ver_main = f"{m.group(1)}.{m.group(2)}.{m.group(3)}"
+              ver_beta = f"beta{m.group(4)}"
+          else:
+              m = stable_pattern.match(release_dir)
+              ver_main = f"{m.group(1)}.{m.group(2)}.{m.group(3)}"
+              ver_beta = ""
+          sub_folder = f"{ver_main}_wanji"
+          full_sub_url = f"{release_base}/{release_dir}/{sub_folder}/"
+          with urllib.request.urlopen(urllib.request.Request(full_sub_url, headers={"Accept": "application/json"})) as resp:
+              sub_items = json.load(resp)
+          target_file = f"{variant}_{ver_main}_Linux_x86_64_wanji.tar.gz"
+          file_list = {i["name"] for i in sub_items}
+          if target_file not in file_list:
+              raise SystemExit(f"Missing asset: {target_file}")
+          print(f"VER_MAIN={ver_main}")
+          print(f"VER_BETA={ver_beta}")
+          print(f"FULL_VER={ver_main}{ver_beta}")
+          PY
+      - name: Compare & Update Makefile
+        id: update
+        shell: bash
+        run: |
+          set -euo pipefail
+          MF="./lucky/Makefile"
+          new_VER_MAIN="${{ steps.latest.outputs.VER_MAIN }}"
+          new_VER_BETA="${{ steps.latest.outputs.VER_BETA }}"
+          cur_VER_MAIN="$(sed -n 's/^VER_MAIN:=//p' "$MF" | head -n1)"
+          cur_VER_BETA="$(sed -n 's/^VER_BETA:=//p' "$MF" | head -n1)"
+          if [[ "$cur_VER_MAIN" == "$new_VER_MAIN" && "$cur_VER_BETA" == "$new_VER_BETA" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          sed -i -e "s/^VER_MAIN:=.*/VER_MAIN:=$new_VER_MAIN/" -e "s/^VER_BETA:=.*/VER_BETA:=$new_VER_BETA/" "$MF"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - name: Commit & Push direct to branch
+        if: steps.update.outputs.changed == 'true'
+        shell: bash
+        env:
+          FULL_VER: ${{ steps.latest.outputs.FULL_VER }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lucky/Makefile
+          git commit -m "chore: auto update lucky version to ${FULL_VER}"
+          git push
