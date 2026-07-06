@@ -9,7 +9,7 @@
 include $(TOPDIR)/rules.mk
 
 VER_MAIN:=3.0.0
-VER_BETA:=beta6
+VER_BETA:=beta7
 SUB_FOLDER:=$(VER_MAIN)_wanji
 
 PKG_NAME:=lucky
