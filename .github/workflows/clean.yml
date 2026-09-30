@@ -9,7 +9,7 @@ on:
       keep_runs:
         description: 'Number of latest runs to keep per workflow (except this workflow itself)'
         required: true
-        default: 2
+        default: 1
         type: number
       keep_self_runs:
         description: 'Number of latest runs to keep for this cleanup workflow itself'
