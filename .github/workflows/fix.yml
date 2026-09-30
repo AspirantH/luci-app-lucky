@@ -1,4 +1,4 @@
-name: Update Lucky Version
+name: Update Lucky Version fixed
 on:
   schedule:
     - cron: "0 0 * * *"
