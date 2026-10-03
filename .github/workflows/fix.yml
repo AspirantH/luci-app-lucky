@@ -1,4 +1,4 @@
-name: Update Lucky Version fixed
+name: Update Lucky Version
 on:
   schedule:
     - cron: "0 0 * * *"
@@ -106,8 +106,9 @@ jobs:
                   return names, "html-href"
 
               # 4. 纯文本（页面上直接列出的文件名/目录名）
+              #    注意：这里允许 beta 后面没有数字（如 v3.1.0beta）
               for m in re.findall(
-                  r'(?<![\w./-])(v\d+\.\d+\.\d+(?:beta\d+)?)(?![\w./-])',
+                  r'(?<![\w./-])(v\d+\.\d+\.\d+(?:beta\d*)?)(?![\w./-])',
                   raw
               ):
                   names.add(m)
@@ -119,8 +120,10 @@ jobs:
 
               return names, "text"
 
+          # 稳定版：vX.Y.Z
           stable_pattern = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
-          beta_pattern = re.compile(r"^v(\d+)\.(\d+)\.(\d+)beta(\d+)$")
+          # Beta 版：vX.Y.Zbeta 或 vX.Y.ZbetaN（N 可省略）
+          beta_pattern = re.compile(r"^v(\d+)\.(\d+)\.(\d+)beta(\d*)$")
 
           # ---- 1. 根目录 ----
           root_raw = fetch(f"{release_base}/", "text/html,application/json,*/*")
@@ -136,11 +139,11 @@ jobs:
                   major, minor, patch = map(int, stable.groups())
                   candidates.append(((major, minor, patch, 0), name))
               elif include_prerelease == "true" and beta:
-                  major, minor, patch, beta_no = map(int, beta.groups())
+                  major, minor, patch = map(int, beta.group(1, 2, 3))
+                  beta_no = int(beta.group(4)) if beta.group(4) else 0
                   candidates.append(((major, minor, patch, beta_no), name))
 
           if not candidates:
-              # 打印实际拿到的内容前 2000 字节，方便定位
               print("=== ROOT RESPONSE (first 2000 bytes) ===", file=sys.stderr)
               print(root_raw[:2000], file=sys.stderr)
               print("=== ROOT NAMES SEEN ===", file=sys.stderr)
@@ -152,16 +155,18 @@ jobs:
 
           _, release_dir = max(candidates, key=lambda x: x[0])
 
+          # ---- 2. 拆解版本号 ----
           if "beta" in release_dir:
               m = beta_pattern.fullmatch(release_dir)
               ver_main = f"{m.group(1)}.{m.group(2)}.{m.group(3)}"
-              ver_beta = f"beta{m.group(4)}"
+              # beta 后面有数字就带数字，没有就是纯 "beta"
+              ver_beta = f"beta{m.group(4)}" if m.group(4) else "beta"
           else:
               m = stable_pattern.fullmatch(release_dir)
               ver_main = f"{m.group(1)}.{m.group(2)}.{m.group(3)}"
               ver_beta = ""
 
-          # ---- 2. 子目录 ----
+          # ---- 3. 子目录 ----
           sub_path = f"/{release_dir}/{ver_main}_wanji/"
           sub_raw = fetch(f"{release_base}{sub_path}", "text/html,application/json,*/*")
           sub_names, sub_mode = extract_names(sub_raw)
