@@ -1,9 +1,7 @@
 name: Update Lucky Version
 on:
   schedule:
-    - cron: "0 0 * * *"
-    - cron: "0 8 * * *"
-    - cron: "0 16 * * *"
+    - cron: "0 */2 * * *"
   workflow_dispatch:
     inputs:
       include_prerelease:
